@@ -1,0 +1,1098 @@
+LOCAL toolName:={"Null","Pencil","Line","Text","Box","Circle","Straw","Sticker"};
+LOCAL fileName:="temp.png";
+LOCAL fileList;
+LOCAL velocity:=1;
+LOCAL pointerPoint:=[0,0];
+LOCAL actualPoint:=[0,0];
+LOCAL cameraPosition:=[0,0];
+LOCAL picSize:=[200,200];
+LOCAL colorF:=RGB(50,50,90);
+LOCAL colorB:=RGB(0,0,0);
+LOCAL toolN:=0;
+LOCAL toolStep:=1;
+LOCAL TX:=[0,0,0,0],TY:=[0,0,0,0];
+LOCAL strTemp;
+LOCAL tempPoint:=[0,0,0,0];
+LOCAL tempV:=[0,0,0,0];
+LOCAL zoom:=[.5,1,2,3,4,5,6,7,8,2];
+
+LOCAL hsv2rgb(h,s,v) BEGIN  
+   LOCAL hi:=floor(h/60) mod 6;
+   LOCAL f:=h/60-hi;
+   LOCAL p:=v*(1-s);
+   LOCAL q:=v*(1-f*s);
+   LOCAL t:=v*(1-(1-f)*s);
+   CASE
+      IF hi==0 THEN
+         RETURN RGB(255*v,255*t,255*p);
+      END;
+      IF hi==1 THEN
+         RETURN RGB(255*q,255*v,255*p);
+      END;
+      IF hi==2 THEN
+         RETURN RGB(255*p,255*v,255*t);
+      END;
+      IF hi==3 THEN
+         RETURN RGB(255*p,255*q,255*v);
+      END;
+      IF hi==4 THEN
+         RETURN RGB(255*t,255*p,255*v);
+      END;
+      IF hi==5 THEN
+         RETURN RGB(255*v,255*p,255*q);
+      END;
+   END;
+END;
+
+LOCAL GetPhotoList(list) BEGIN
+   LOCAL t:={},i:=0;
+   LOCAL j:=1;
+   WHILE 1 DO
+      i:=i+1;
+      IFERR list(i) THEN
+         BREAK;
+      END;
+      IF INSTRING(list(i),".crp")==DIM(list(i))-3 THEN
+         CONTINUE;
+      END;
+      IF list(i)=="icon.png" THEN
+         CONTINUE;
+      END;
+      IF list(i)=="ToolMap" THEN
+         CONTINUE;
+      END;
+      t(j):=list(i);
+      j:=j+1;
+   END;
+   RETURN t;
+END;
+
+LOCAL GetCRPList(list) BEGIN
+   LOCAL t:={},i:=0;
+   LOCAL j:=1;
+   WHILE 1 DO
+      i:=i+1;
+      IFERR list(i) THEN
+         BREAK;
+      END;
+      IF INSTRING(list(i),".png")==DIM(list(i))-3 THEN
+         CONTINUE;
+      END;
+      IF list(i)=="ToolMap" THEN
+         CONTINUE;
+      END;
+      t(j):=list(i);
+      j:=j+1;
+   END;
+   RETURN t;
+END;
+ 
+LOCAL LimitedCamera() BEGIN
+   IF cameraPosition(1)<0 OR picSize(1)*zoom(zoom(10))<320 THEN
+      cameraPosition(1):=0;
+   END;
+   IF cameraPosition(2)<0 OR picSize(2)*zoom(zoom(10))<220 THEN
+      cameraPosition(2):=0;
+   END;
+   IF cameraPosition(1)>picSize(1)*zoom(zoom(10))-320 AND picSize(1)*zoom(zoom(10))≥320 THEN
+      cameraPosition(1):=picSize(1)*zoom(zoom(10))-320;
+   END;
+   IF cameraPosition(2)>picSize(2)*zoom(zoom(10))-220 AND picSize(2)*zoom(zoom(10))≥220 THEN
+     cameraPosition(2):=picSize(2)*zoom(zoom(10))-220;
+   END;
+END;
+
+LOCAL GUIManager(f) BEGIN
+   CASE
+      IF f==1 THEN
+         DIMGROB_P(G2,320,20);
+         RECT_P(G2,−1,0,320,20,RGB(255,255,255),RGB(50,50,90));
+         TEXTOUT_P(100*zoom(zoom(10))+"%",G2,10,2,3,RGB(255,255,255)); 
+         TEXTOUT_P("X:"+actualPoint(1)+" Y:"+actualPoint(2),G2,125,2,3,RGB(255,255,255));
+         TEXTOUT_P(toolName(toolN+1),G2,220,2,3,RGB(255,255,255));
+         RECT_P(G2,65,3,78,16,RGB(255,255,255),colorF);
+         RECT_P(G2,90,3,103,16,RGB(255,255,255),colorB);
+         IF velocity==1 THEN
+            RECT_P(G2,275,1,295,20,RGB(50,50,90),RGB(50,50,90));
+         ELSE
+            TEXTOUT_P("↑",G2,275,2,3,RGB(255,255,255));
+         END;
+         BLIT_P(G1,G2);
+      END;
+      IF f==2 THEN
+         RECT_P(G2,65,3,78,16,RGB(255,255,255),colorF);
+         RECT_P(G2,90,3,103,16,RGB(255,255,255),colorB);
+      END;
+      IF f==3 THEN
+         RECT_P(G2,125,1,220,20,RGB(50,50,90),RGB(50,50,90));
+         TEXTOUT_P("X:"+actualPoint(1)+" Y:"+actualPoint(2),G2,125,2,3,RGB(255,255,255));
+      END;
+      IF f==4 THEN
+         RECT_P(G2,220,1,265,20,RGB(50,50,90),RGB(50,50,90));
+         TEXTOUT_P(toolName(toolN+1),G2,220,2,3,RGB(255,255,255));
+      END;
+      IF f==5 THEN
+         IF velocity==1 THEN
+            RECT_P(G2,275,1,295,20,RGB(50,50,90),RGB(50,50,90));
+         ELSE
+            TEXTOUT_P("↑",G2,275,2,3,RGB(255,255,255));
+         END;
+      END;
+   END;
+END;
+
+LOCAL Display(f) BEGIN
+   IF f THEN
+      IF picSize(1)*zoom(zoom(10))<321 OR picSize(2)*zoom(zoom(10))<221 THEN
+         BLIT_P(G1,0,0,319,219,G5,0,80,32,102);
+      END;
+      IF picSize(1)*zoom(zoom(10))<=320 THEN
+         TX(1):=320/2-CEILING(picSize(1)*zoom(zoom(10))/2);
+         TX(2):=320/2+CEILING(picSize(1)*zoom(zoom(10))/2);
+         TX(3):=0;
+         TX(4):=picSize(1);
+      ELSE
+         TX(1):=−(cameraPosition(1) MOD zoom(zoom(10)));
+         TX(2):=(CEILING(picSize(1)/zoom(zoom(10))*(320/picSize(1))+1))*zoom(zoom(10))-(cameraPosition(1) MOD zoom(zoom(10)));
+         TX(3):=IP(cameraPosition(1)/zoom(zoom(10)));
+         TX(4):=IP(cameraPosition(1)/zoom(zoom(10)))+CEILING(picSize(1)/zoom(zoom(10))*(320/picSize(1))+1);
+      END;
+      IF picSize(2)*zoom(zoom(10))<=220 THEN
+         TY(1):=220/2-CEILING(picSize(2)*zoom(zoom(10))/2);
+         TY(2):=220/2+CEILING(picSize(2)*zoom(zoom(10))/2);
+         TY(3):=0;
+         TY(4):=picSize(2);
+      ELSE
+         TY(1):=−(cameraPosition(2) MOD zoom(zoom(10)));
+         TY(2):=(CEILING(picSize(2)/zoom(zoom(10))*(220/picSize(2))+1))*zoom(zoom(10))-(cameraPosition(2) MOD zoom(zoom(10))); 
+         TY(3):=IP(cameraPosition(2)/zoom(zoom(10)));
+         TY(4):=IP(cameraPosition(2)/zoom(zoom(10)))+CEILING(picSize(2)/zoom(zoom(10))*(220/picSize(2))+1);
+      END;
+   END;
+   BLIT_P(G1,TX(1),TY(1),TX(2),TY(2),G3,TX(3),TY(3),TX(4),TY(4)); 
+   BLIT_P(G1,0,219,320,240,G2);
+   BLIT_P(G0,G1);
+END;
+
+LOCAL ChooseColor(crp) BEGIN
+   LOCAL f:=1,h:=0,s:=1,v:=1,t:=3;
+   WHILE 1 DO
+      tempV(4):=GETKEY;
+      t:=3;
+      CASE
+         IF tempV(4)==4 THEN
+            IF crp THEN
+               tempV(3):=GETPIX_P(G5,0+(tempV(2) MOD 8),125+IP(tempV(2)/8));
+            END;
+            RETURN;
+         END;
+         IF tempV(4)==21 THEN
+            tempV(1):=0;
+            IF INPUT({{tempV(1),[1]}},"InputColor",{"Color"},{""}) THEN
+               IF crp THEN
+                  tempV(3):=tempV(1);
+                  RETURN;
+               ELSE
+                  colorF:=tempV(1);
+                  GUIManager(2);
+                  RETURN;
+               END;
+            END;
+            Display(1);
+            f:=1;
+         END;
+         IF tempV(4)==30 THEN
+            IF crp THEN
+               tempV(3):=hsv2rgb(h,s,v);
+               RETURN;
+            ELSE
+               colorF:=hsv2rgb(h,s,v);
+               GUIManager(2);
+               RETURN;
+            END;
+         END;
+      END;
+      CASE
+         IF ISKEYDOWN(2) THEN
+            s:=s-.005*t;
+            IF s<0 THEN
+               s:=0
+            END;
+            f:=1;
+         END;
+         IF ISKEYDOWN(7) THEN
+            h:=h-1.8*t;
+            IF h<0 THEN
+               h:=0
+            END;
+            f:=1;
+         END;
+         IF ISKEYDOWN(8) THEN
+            h:=h+1.8*t;
+            IF h>359 THEN
+               h:=359
+            END;
+            f:=1;
+         END;
+         IF ISKEYDOWN(12) THEN
+            s:=s+.005*t;
+            IF s>1 THEN
+               s:=1
+            END;
+            f:=1;
+         END;
+         IF ISKEYDOWN(50) THEN
+            v:=v+.005*t;
+            IF v>1 THEN
+               v:=1
+            END;
+            f:=1;
+         END;
+         IF ISKEYDOWN(45) THEN
+            v:=v-.005*t;
+            IF v<0 THEN
+               v:=0
+            END;
+            f:=1;
+         END;
+      END;
+      IF f THEN
+         f:=0;
+         RECT_P(G1,50,40,270,180,RGB(255,255,255),RGB(50,50,90));
+         RECT_P(G1,100,60,198,158,RGB(0,0,0));
+         BLIT_P(G1,70,60,89,159,G5,53,81,72,181);
+         BLIT_P(G1,100,60,199,159,G5,74,81,173,181,RGB(0,0,0,255),IP(v*255));
+         RECT_P(G1,215,90,255,130,RGB(255,255,255),hsv2rgb(h,s,v));
+         INVERT_P(G1,IP(h/3.6)+100,IP(s*99)+60,IP(h/3.6)+100,IP(s*99)+60);
+         INVERT_P(G1,IP(h/3.6)+100-3,IP(s*99)+60,IP(h/3.6)+100+3,IP(s*99)+60);
+         INVERT_P(G1,IP(h/3.6)+100,IP(s*99)+60-3,IP(h/3.6)+100,IP(s*99)+60+3);
+         LINE_P(G1,69,159-IP(v*99),66,156-IP(v*99),RGB(255,255,255));
+         LINE_P(G1,66,156-IP(v*99),66,162-IP(v*99),RGB(255,255,255));
+         LINE_P(G1,69,159-IP(v*99),66,162-IP(v*99),RGB(255,255,255));
+         BLIT_P(G0,G1);
+      END;
+      WAIT(.02);
+   END;
+END;
+
+LOCAL GetActualPoint() BEGIN
+   IF picSize(1)*zoom(zoom(10))<321 THEN
+      actualPoint(1):=IP((pointerPoint(1)-(160-IP(picSize(1)*zoom(zoom(10))/2)))/zoom(zoom(10)));
+   ELSE
+      actualPoint(1):=IP(1/zoom(zoom(10))*(pointerPoint(1)+cameraPosition(1))); 
+   END;
+   IF picSize(2)*zoom(zoom(10))<221 THEN
+      actualPoint(2):=IP((pointerPoint(2)-(110-IP(picSize(2)*zoom(zoom(10))/2)))/zoom(zoom(10)));
+   ELSE
+      actualPoint(2):=IP(1/zoom(zoom(10))*(pointerPoint(2)+cameraPosition(2))); 
+   END;
+END;
+
+LOCAL DrawToolsMenu(t) BEGIN
+   BLIT_P(G0,80,80,G5,0,0,160,80);
+   RECT_P(G0,80+40*(t MOD 4)+1,80+(IP(t/4))*40+1,80+40*((t MOD 4)+1)-2,80+(IP(t/4)+1)*40-2,RGB(255,255,0),RGB(0,0,0,255));
+   RECT_P(G0,80+40*(t MOD 4)+2,80+(IP(t/4))*40+2,80+40*((t MOD 4)+1)-3,80+(IP(t/4)+1)*40-3,RGB(255,255,0),RGB(0,0,0,255));
+END;
+
+LOCAL ChangeTools() BEGIN
+   tempV(1):=toolN;
+   tempV(2):=-1;
+   DrawToolsMenu(tempV(1));
+   WHILE 1 DO
+      tempV(2):=GETKEY();
+      CASE
+         IF tempV(2)==2 THEN
+            tempV(1):=((tempV(1)+4) MOD 8);
+            DrawToolsMenu(tempV(1));
+            CONTINUE;
+         END;
+         IF tempV(2)==8 THEN
+            tempV(1):=((tempV(1)+1) MOD 8);
+            DrawToolsMenu(tempV(1));
+            CONTINUE;
+         END;
+         IF tempV(2)==7 THEN
+            tempV(1):=((tempV(1)+7) MOD 8);
+            DrawToolsMenu(tempV(1));
+            CONTINUE;
+         END;
+         IF tempV(2)==12 THEN
+            tempV(1):=((tempV(1)+4) MOD 8);
+            DrawToolsMenu(tempV(1));
+            CONTINUE;
+         END;
+         IF ISKEYDOWN(4) THEN
+            Display(1);
+            RETURN;
+         END;
+         IF ISKEYDOWN(30) THEN
+            toolN:=tempV(1);
+            toolStep:=1;
+            tempPoint:=[0,0,0,0];
+            GUIManager(4);
+            Display(1);
+            RETURN;
+         END;
+      END;
+      WAIT(.04);
+   END;
+END;
+
+LOCAL MoveCamera(n) BEGIN
+   CASE
+      IF n==1 THEN
+         cameraPosition(2):=cameraPosition(2)-velocity;
+      END;
+      IF n==2 THEN
+         cameraPosition(1):=cameraPosition(1)-velocity;
+      END;
+      IF n==3 THEN
+         cameraPosition(1):=cameraPosition(1)+velocity;
+      END;
+      IF n==4 THEN
+         cameraPosition(2):=cameraPosition(2)+velocity;
+      END;
+   END;
+   LimitedCamera();
+END;
+
+LOCAL ChangeZoom(n) BEGIN
+   tempV(1):=zoom(zoom(10));
+   IF n THEN
+      zoom(10):=zoom(10)+1;
+      IF zoom(10)>9 THEN
+         zoom(10):=9;
+      END;
+   ELSE
+      zoom(10):=zoom(10)-1;
+      IF zoom(10)<1 THEN
+         zoom(10):=1;
+      END;
+   END;
+   RECT_P(G2,10,2,45,20,RGB(50,50,90));
+   TEXTOUT_P(100*zoom(zoom(10))+"%",G2,10,2,3,RGB(255,255,255)); 
+   cameraPosition(1):=ROUND(zoom(zoom(10))/tempV(1)*cameraPosition(1));
+   cameraPosition(2):=ROUND(zoom(zoom(10))/tempV(1)*cameraPosition(2));
+   LimitedCamera();
+END;
+
+LOCAL FileManager(f) BEGIN
+   CASE
+      IF f==1 THEN
+         strTemp:=fileName;
+         tempV(1):=0;
+         IF INPUT({{strTemp,[2]},{picSize(1),[1]},{picSize(2),[1]},{tempV(1),0}},"NewImage",{"FileName","X","Y","Resize?"},{"","","",""}) THEN
+            IF NOT INSTRING(strTemp,".png")==DIM(str)-3 THEN
+               fileName:=strTemp+".png";
+            ELSE
+               fileName:=strTemp;
+            END;
+            IF picSize(1)≥1000 THEN
+               picSize(1):=999;
+            END;
+            IF picSize(2)≥1000 THEN
+               picSize(2):=999;
+            END;
+            IF tempV(1) THEN
+               DIMGROB_P(G3,picSize(1),picSize(2),colorB);
+               BLIT_P(G3,G4);
+               DIMGROB_P(G4,picSize(1),picSize(2),RGB(255,255,255));
+               BLIT_P(G4,G3);
+            ELSE
+               DIMGROB_P(G4,picSize(1),picSize(2),colorB);
+               DIMGROB_P(G3,picSize(1),picSize(2),colorB);
+            END;
+            LimitedCamera(); 
+            GUIManager(1);
+         END; 
+      END;
+      IF f==2 THEN
+         strTemp:=fileName;
+         IF INPUT({{strTemp,[2]}},"SaveImage",{"FileName"},{""}) THEN
+            BLIT_P(G4,G3);
+            IF INSTRING(strTemp,".png")≠DIM(strTemp)-3 THEN
+               fileName:=strTemp+".png";
+            ELSE
+               fileName:=strTemp;
+            END;
+            AFiles(fileName):=G4;
+            LimitedCamera();
+            GUIManager(1);
+            fileList:=GetPhotoList(AFiles());
+         END;
+      END;
+      IF f==3 THEN
+         tempV(1):=1;
+         IF INPUT({{tempV(1),fileList}},"LoadImage",{"FileName"},{""}) THEN
+            G3:=AFiles(fileList(tempV(1)));
+            G4:=AFiles(fileList(tempV(1)));
+            fileName:=fileList(tempV(1));
+            picSize(1):=GROBW_P(G3);
+            picSize(2):=GROBH_P(G3);
+            LimitedCamera();
+            GUIManager(1);
+         END; 
+      END;
+   END;
+END;
+
+LOCAL UsePencil(f) BEGIN
+   IF f THEN
+      IF tempPoint(3)==0 THEN
+         PIXON_P(G4,actualPoint(1),actualPoint(2),colorF);
+         tempPoint(1):=actualPoint(1);
+         tempPoint(2):=actualPoint(2);
+      ELSE
+         LINE_P(G4,tempPoint(1),tempPoint(2),actualPoint(1),actualPoint(2),colorF);
+         tempPoint(1):=actualPoint(1);
+         tempPoint(2):=actualPoint(2);
+      END;
+   ELSE
+      PIXON_P(G3,actualPoint(1),actualPoint(2),colorF);
+   END;
+END;
+
+LOCAL UseLine(f) BEGIN
+   IF f THEN
+      CASE
+         IF toolStep==1 THEN
+            tempPoint(1):=actualPoint(1);
+            tempPoint(2):=actualPoint(2);
+            toolStep:=2;
+         END;
+         IF toolStep==2 THEN
+            LINE_P(G4,tempPoint(1),tempPoint(2),actualPoint(1),actualPoint(2),colorF);
+            toolStep:=1;
+         END;
+      END;
+   ELSE
+      CASE
+         IF toolStep==1 THEN
+            PIXON_P(G3,actualPoint(1),actualPoint(2),colorF);
+         END;
+         IF toolStep==2 THEN
+            LINE_P(G3,tempPoint(1),tempPoint(2),actualPoint(1),actualPoint(2),colorF);
+         END;
+      END;
+   END;
+END;
+
+LOCAL UseText(f) BEGIN
+   IF f THEN
+      CASE
+         IF toolStep==1 THEN
+            strTemp:="";
+            IF INPUT({{strTemp,[2]}},"TextInput",{"Text"},{""}) THEN
+               tempPoint(1):=1;
+               toolStep:=2;
+               Display(1);
+            END;
+         END;
+         IF toolStep==2 THEN
+            TEXTOUT_P(strTemp,G4,actualPoint(1),actualPoint(2),tempPoint(1),colorF);
+            toolStep:=1;
+         END;
+      END;
+   ELSE
+      CASE
+         IF toolStep==1 THEN
+            RETURN;
+         END;
+         IF toolStep==2 THEN
+            TEXTOUT_P(strTemp,G3,actualPoint(1),actualPoint(2),tempPoint(1),colorF);
+         END;
+      END;
+   END;
+END;
+
+LOCAL UseBox(f) BEGIN
+   IF f THEN
+      CASE
+         IF toolStep==1 THEN
+            tempPoint(1):=actualPoint(1);
+            tempPoint(2):=actualPoint(2);
+            toolStep:=2;
+         END;
+         IF toolStep==2 THEN
+            RECT_P(G4,tempPoint(1),tempPoint(2),actualPoint(1),actualPoint(2),colorF,RGB(0,0,0,255));
+            toolStep:=3;
+         END;
+         IF toolStep==3 THEN
+            RECT_P(G4,tempPoint(1),tempPoint(2),actualPoint(1),actualPoint(2),colorF);
+            toolStep:=1;
+         END;
+      END;
+   ELSE
+      CASE
+         IF toolStep==1 THEN
+            PIXON_P(G3,actualPoint(1),actualPoint(2),colorF);
+         END;
+         IF toolStep==2 THEN
+            RECT_P(G3,tempPoint(1),tempPoint(2),actualPoint(1),actualPoint(2),colorF,RGB(0,0,0,255));
+         END;
+      END;
+   END;
+END;
+
+LOCAL UseCircle(f) BEGIN
+   IF f THEN
+      CASE
+         IF toolStep==1 THEN
+            tempPoint(1):=actualPoint(1);
+            tempPoint(2):=actualPoint(2);
+            toolStep:=2;
+         END;
+         IF toolStep==2 THEN
+            ARC_P(G4,ROUND((tempPoint(1)+actualPoint(1))/2),ROUND((tempPoint(2)+actualPoint(2))/2),{ABS(ROUND((tempPoint(1)+actualPoint(1))/2)-tempPoint(1)),ABS(ROUND((tempPoint(2)+actualPoint(2))/2)-tempPoint(2))},0,2*π,{colorF,RGB(0,0,0,255)});
+            toolStep:=3;
+         END;
+         IF toolStep==3 THEN
+            ARC_P(G4,ROUND((tempPoint(1)+actualPoint(1))/2),ROUND((tempPoint(2)+actualPoint(2))/2),{ABS(ROUND((tempPoint(1)+actualPoint(1))/2)-tempPoint(1)),ABS(ROUND((tempPoint(2)+actualPoint(2))/2)-tempPoint(2))},0,2*π,{colorF,colorF});
+            toolStep:=1;
+         END;
+      END;
+   ELSE
+      CASE
+         IF toolStep==1 THEN
+            PIXON_P(G3,actualPoint(1),actualPoint(2),colorF);
+         END;
+         IF toolStep==2 THEN
+            ARC_P(G3,ROUND((tempPoint(1)+actualPoint(1))/2),ROUND((tempPoint(2)+actualPoint(2))/2),{ABS(ROUND((tempPoint(1)+actualPoint(1))/2)-tempPoint(1)),ABS(ROUND((tempPoint(2)+actualPoint(2))/2)-tempPoint(2))},0,2*π,{colorF,RGB(0,0,0,255)});
+         END;
+      END;
+   END;
+END;
+
+LOCAL UseStraw(f) BEGIN
+   IF f THEN
+      colorF:=GETPIX_P(G4,actualPoint(1),actualPoint(2));
+      GUIManager(2);
+   ELSE
+      INVERT_P(G3,actualPoint(1),actualPoint(2),actualPoint(1),actualPoint(2));
+   END;
+END;
+
+LOCAL UseSticker(f) BEGIN
+   IF f THEN
+      CASE
+         IF toolStep==1 THEN
+            tempPoint(1):=actualPoint(1);
+            tempPoint(2):=actualPoint(2);
+            toolStep:=2;
+         END;
+         IF toolStep==2 THEN
+            tempPoint(3):=actualPoint(1);
+            tempPoint(4):=actualPoint(2);
+            toolStep:=4;
+         END;
+         IF toolStep==4 THEN
+            BLIT_P(G4,G3);
+            BLIT_P(G4,MIN(actualPoint(1),actualPoint(1)+(tempPoint(1)-tempPoint(3))),MIN(actualPoint(2),actualPoint(2)+(tempPoint(2)-tempPoint(4))),MAX(actualPoint(1),actualPoint(1)+(tempPoint(1)-tempPoint(3)))+1,MAX(actualPoint(2),actualPoint(2)+(tempPoint(2)-tempPoint(4)))+1,G3,MIN(tempPoint(1),tempPoint(3)),MIN(tempPoint(2),tempPoint(4)),MAX(tempPoint(1),tempPoint(3))+1,MAX(tempPoint(2),tempPoint(4))+1);
+            toolStep:=1;
+         END;
+      END;
+   ELSE
+      CASE
+         IF toolStep==1 THEN
+            INVERT_P(G3,actualPoint(1),actualPoint(2),actualPoint(1),actualPoint(2));
+         END;
+         IF toolStep==2 THEN
+            INVERT_P(G3,MIN(tempPoint(1),actualPoint(1)),MIN(tempPoint(2),actualPoint(2)),MAX(tempPoint(1),actualPoint(1)),MAX(tempPoint(2),actualPoint(2)));
+            INVERT_P(G3,MIN(tempPoint(1),actualPoint(1))+1,MIN(tempPoint(2),actualPoint(2))+1,MAX(tempPoint(1),actualPoint(1))-1,MAX(tempPoint(2),actualPoint(2))-1);
+         END;
+         IF toolStep==4 THEN
+            BLIT_P(G3,MIN(actualPoint(1),actualPoint(1)+(tempPoint(1)-tempPoint(3))),MIN(actualPoint(2),actualPoint(2)+(tempPoint(2)-tempPoint(4))),MAX(actualPoint(1),actualPoint(1)+(tempPoint(1)-tempPoint(3)))+1,MAX(actualPoint(2),actualPoint(2)+(tempPoint(2)-tempPoint(4)))+1,G4,MIN(tempPoint(1),tempPoint(3)),MIN(tempPoint(2),tempPoint(4)),MAX(tempPoint(1),tempPoint(3))+1,MAX(tempPoint(2),tempPoint(4))+1); 
+         END;
+      END;
+   END;
+END;
+
+LOCAL UseTools() BEGIN
+   CASE
+      IF toolN==0 THEN
+         RETURN;
+      END;
+      IF toolN==1 THEN
+         UsePencil(1);
+      END;
+      IF toolN==2 THEN
+         UseLine(1);
+      END;
+      IF toolN==3 THEN
+         UseText(1);
+      END;
+      IF toolN==4 THEN
+         UseBox(1);
+      END;
+      IF toolN==5 THEN
+         UseCircle(1);
+      END;
+      IF toolN==6 THEN
+         UseStraw(1);
+      END;
+      IF toolN==7 THEN
+         UseSticker(1);
+      END;
+   END;
+   BLIT_P(G3,G4);
+   Display(1);
+END;
+
+LOCAL ToolsPreview() BEGIN
+   CASE
+      IF toolN==0 THEN
+      END;
+      IF toolN==1 THEN
+         UsePencil(0);
+      END;
+      IF toolN==2 THEN
+         UseLine(0);
+      END;
+      IF toolN==3 THEN
+         UseText(0);
+      END;
+      IF toolN==4 THEN
+         UseBox(0);
+      END;
+      IF toolN==5 THEN
+         UseCircle(0);
+      END;
+      IF toolN==6 THEN
+         UseStraw(0);
+      END;
+      IF toolN==7 THEN
+         UseSticker(0);
+      END;
+   END;
+   Display(0);
+   BLIT_P(G3,G4);
+END;
+
+LOCAL ShowPointer() BEGIN
+   IF toolStep==3 THEN
+      toolStep:=1;
+   END;
+   CASE
+      IF pointerPoint(1)<0 THEN
+         pointerPoint(1):=0;
+      END;
+      IF pointerPoint(1)>319 THEN
+         pointerPoint(1):=319;
+      END;
+   END;
+   CASE
+      IF pointerPoint(2)<0 THEN
+         pointerPoint(2):=0;
+      END;
+      IF pointerPoint(2)>219 THEN
+         pointerPoint(2):=219;
+      END;
+   END;
+   GetActualPoint();
+   GUIManager(3);
+   ToolsPreview();
+   INVERT_P(G0,pointerPoint(1),pointerPoint(2),pointerPoint(1),pointerPoint(2));
+   INVERT_P(G0,pointerPoint(1)-3,pointerPoint(2),pointerPoint(1)+3,pointerPoint(2));
+   INVERT_P(G0,pointerPoint(1),pointerPoint(2)-3,pointerPoint(1),pointerPoint(2)+3);
+END;
+
+LOCAL DetailPanel() BEGIN
+   RECT_P(G0,20,25,300,195,RGB(255,255,255),RGB(50,50,90));
+   IF picSize(1)>picSize(2) THEN
+      RECT_P(G0,139,34+(1-picSize(2)/picSize(1))*75,291,186-(1-picSize(2)/picSize(1))*75,RGB(255,255,255),RGB(50,50,90));
+      BLIT_P(G0,140,35+(1-picSize(2)/picSize(1))*75,290+1,185-(1-picSize(2)/picSize(1))*75+1,G4);
+   ELSE
+      RECT_P(G0,139+(1-picSize(1)/picSize(2))*75,34,291-(1-picSize(1)/picSize(2))*75,186,RGB(255,255,255),RGB(50,50,90));
+      BLIT_P(G0,140+(1-picSize(1)/picSize(2))*75,35,290-(1-picSize(1)/picSize(2))*75+1,185+1,G4);
+   END;
+   TEXTOUT_P("FileName:",G0,28,35,2,RGB(255,255,255));
+   TEXTOUT_P("  "+fileName,G0,28,47,2,RGB(255,255,255));
+   TEXTOUT_P("Size:",G0,28,59,2,RGB(255,255,255));
+   TEXTOUT_P("  "+picSize(1)+"*"+picSize(2),G0,28,71,2,RGB(255,255,255));
+   TEXTOUT_P("ForeColor:",G0,28,83,2,RGB(255,255,255));
+   TEXTOUT_P("  "+colorF,G0,28,95,2,RGB(255,255,255));
+   RECT_P(G0,98,95,109,106,RGB(255,255,255),colorF);
+   TEXTOUT_P("BackColor:",G0,28,107,2,RGB(255,255,255));
+   TEXTOUT_P("  "+colorB,G0,28,119,2,RGB(255,255,255));
+   RECT_P(G0,98,119,109,130,RGB(255,255,255),colorB);
+   TEXTOUT_P("X:"+actualPoint(1),G0,28,131,2,RGB(255,255,255));
+   TEXTOUT_P("Y:"+actualPoint(2),G0,28,143,2,RGB(255,255,255));
+   TEXTOUT_P("Tool:",G0,28,155,2,RGB(255,255,255));
+   BLIT_P(G0,85,145,125,185,G5,(toolN MOD 4)*40,IP(toolN/4)*40,(toolN MOD 4)*40+40,IP(toolN/4)*40+40);
+   TEXTOUT_P("  "+toolName(toolN+1),G0,28,167,2,RGB(255,255,255));
+   WHILE 1 DO
+      tempV(1):=GETKEY();
+      IF tempV(1)==4 THEN
+         RETURN;
+      END;
+      WAIT(.02);
+   END;
+END;
+
+LOCAL ColorPanel() BEGIN
+   LOCAL crpList:=GetCRPList(AFiles());
+   LOCAL f:=1;
+   tempV(2):=0;
+   WHILE 1 DO
+      tempV(1):=GETKEY();
+      CASE
+         IF tempV(1)==4 THEN
+            RETURN;
+         END;
+         IF tempV(1)==30 THEN
+            colorF:=GETPIX_P(G5,0+(tempV(2) MOD 8),125+IP(tempV(2)/8));
+            GUIManager(2);
+            RETURN;
+         END;
+         IF tempV(1)==2 THEN
+            tempV(2):=(tempV(2)+24) MOD 32;
+            f:=1;
+         END;
+         IF tempV(1)==7 THEN
+            tempV(2):=(tempV(2)+31) MOD 32;
+            f:=1;
+         END;
+         IF tempV(1)==8 THEN
+            tempV(2):=(tempV(2)+1) MOD 32;
+            f:=1;
+         END;
+         IF tempV(1)==12 THEN
+            tempV(2):=(tempV(2)+8) MOD 32;
+            f:=1;
+         END;
+         IF tempV(1)==28 THEN
+            strTemp:="New.crp";
+            IF INPUT({{strTemp,[2]}},"SaveColorPanel",{"PanelName"},{""}) THEN
+               DIMGROB_P(G3,8,4);
+               BLIT_P(G3,G5,0,125,8,129);
+               IF INSTRING(strTemp,".crp")≠DIM(strTemp)-3 THEN
+                  strTemp:=strTemp+".crp";
+               END;
+               AFiles(strTemp):=G3;
+               crpList:=GetCRPList(AFiles());
+               DIMGROB_P(G3,GROBW_P(G4),GROBH_P(G4));
+               BLIT_P(G3,G4);
+            END;
+            f:=1;
+         END;
+         IF tempV(1)==29 THEN
+            tempV(4):=1;
+            IF INPUT({{tempV(4),crpList}},"LoadPanel",{"PanelName"},{""}) THEN
+               G3:=AFiles(crpList(tempV(4)));
+               BLIT_P(G5,0,125,8,129,G3);
+               DIMGROB_P(G3,GROBW_P(G4),GROBH_P(G4));
+               BLIT_P(G3,G4);
+            END; 
+            f:=1;
+         END;
+         IF tempV(1)==21 THEN
+            ChooseColor(1);
+            PIXON_P(G5,0+(tempV(2) MOD 8),125+IP(tempV(2)/8),tempV(3));
+            f:=1;
+         END;
+         IF tempV(1)==45 THEN
+            PIXON_P(G5,0+(tempV(2) MOD 8),125+IP(tempV(2)/8),colorB);
+            f:=1;
+         END;
+         IF tempV(1)==50 THEN
+            PIXON_P(G5,0+(tempV(2) MOD 8),125+IP(tempV(2)/8),colorF);
+            f:=1;
+         END;
+      END;
+      IF f THEN
+         f:=0;
+         RECT_P(G1,20,30,300,190,RGB(255,255,255),RGB(50,50,90));
+         BLIT_P(G1,40,50,160,170,G5,0,125,4,129);
+         BLIT_P(G1,160,50,280,170,G5,4,125,8,129);
+         INVERT_P(G1,41+(tempV(2) MOD 8)*30,51+IP(tempV(2)/8)*30,68+(tempV(2) MOD 8)*30,78+IP(tempV(2)/8)*30); 
+         INVERT_P(G1,42+(tempV(2) MOD 8)*30,52+IP(tempV(2)/8)*30,67+(tempV(2) MOD 8)*30,77+IP(tempV(2)/8)*30);
+         INVERT_P(G1,52+(tempV(2) MOD 8)*30,64+IP(tempV(2)/8)*30,57+(tempV(2) MOD 8)*30,65+IP(tempV(2)/8)*30);
+         INVERT_P(G1,54+(tempV(2) MOD 8)*30,62+IP(tempV(2)/8)*30,55+(tempV(2) MOD 8)*30,67+IP(tempV(2)/8)*30);
+         RECT_P(G1,40+(tempV(2) MOD 8)*30,50+IP(tempV(2)/8)*30,69+(tempV(2) MOD 8)*30,79+IP(tempV(2)/8)*30,RGB(255,255,255),RGB(0,0,0,255));
+         BLIT_P(G0,G1);
+      END;
+      WAIT(.02);
+   END;
+END;
+
+VIEW "Paint" Paint() BEGIN
+   LOCAL keyCode:=-1;
+   LOCAL tempLocation:=[0,0];
+   fileName:="temp.png";
+   fileList:=GetPhotoList(AFiles());
+   pointerPoint:=[0,0];
+   cameraPosition:=[0,0];
+   toolN:=0;
+   toolStep:=1;
+   DIMGROB_P(G1,320,240);
+   G5:=AFiles("ToolMap");
+   GUIManager(1);
+   picSize:=[200,200];
+   DIMGROB_P(G3,picSize(1),picSize(2),RGB(255,255,255));
+   DIMGROB_P(G4,picSize(1),picSize(2),RGB(255,255,255));
+   LimitedCamera();
+   GetActualPoint();
+   Display(1);
+   ShowPointer();
+   WHILE 1 DO
+      keyCode:=GETKEY();
+      tempLocation(1):=MOUSE(0);
+      tempLocation(2):=MOUSE(1);
+      IF (keyCode≥16 AND keyCode≤19) OR (keyCode≥22 AND keyCode≤25) THEN
+         toolStep:=1;
+         tempPoint:=[0,0,0,0];
+         CASE
+            IF keyCode==16 THEN
+               toolN:=0;
+            END;
+            IF keyCode==17 THEN
+               toolN:=1;
+            END;
+            IF keyCode==18 THEN
+               toolN:=2;
+            END;
+            IF keyCode==19 THEN
+               toolN:=3;
+            END;
+            IF keyCode==22 THEN
+               toolN:=4;
+            END;
+            IF keyCode==23 THEN
+               toolN:=5;
+            END;
+            IF keyCode==24 THEN
+               toolN:=6;
+            END;
+            IF keyCode==25 THEN
+               toolN:=7;
+            END;
+         END;
+         GUIManager(4);
+         Display(1);
+      END;
+      CASE
+         IF tempLocation(1)≠-1 AND tempLocation(2)≠-1 THEN
+            pointerPoint(1):=tempLocation(1);
+            pointerPoint(2):=tempLocation(2);
+            IF toolN==1 THEN
+               tempPoint(4):=1;
+            END;
+            ShowPointer();
+         END;
+         IF keyCode==30 AND toolN>1 THEN
+            UseTools();
+         END;
+         IF keyCode==4 THEN
+            toolStep:=1;
+            tempPoint:=[0,0,0,0];
+            ShowPointer();
+         END;
+         IF keyCode==14 THEN
+            DetailPanel();
+            Display(1);
+         END;
+         IF keyCode==41 THEN
+            IF velocity==1 THEN
+               velocity:=4;
+            ELSE
+               velocity:=1;
+            END;
+            GUIManager(5);
+            Display(0);
+         END;
+         IF keyCode==31 AND toolN==3 THEN
+            tempPoint(1):=(tempPoint(1) MOD 7)+1;
+            ShowPointer();
+         END;
+         IF keyCode==21 THEN
+            ChooseColor(0);
+            Display(1);
+            WAIT(.02);
+         END;
+         IF keyCode==27 THEN
+            FileManager(1);
+            Display(1);
+         END;
+         IF keyCode==28 THEN
+            FileManager(2);
+            Display(1);
+         END;
+         IF keyCode==29 THEN
+            FileManager(3);
+            Display(1);
+         END;
+         IF keyCode==26 THEN
+            ColorPanel();
+            Display(1);
+         END;
+         IF keyCode==20 THEN
+            tempV(1):=colorB;
+            colorB:=colorF;
+            colorF:=tempV(1);
+            GUIManager(2);
+            Display(0);
+         END;
+         IF keyCode==15 THEN
+            ChangeTools();
+            WAIT(.1);
+         END;
+         IF keyCode==50 THEN
+            ChangeZoom(1);
+            Display(1);
+         END;
+         IF keyCode==45 THEN
+            ChangeZoom(0);
+            Display(1);
+         END;
+         IF ISKEYDOWN(33) THEN
+            MoveCamera(1);
+            Display(1);
+         END;
+         IF ISKEYDOWN(37) THEN
+            MoveCamera(2);
+            Display(1);
+         END;
+         IF ISKEYDOWN(39) THEN
+            MoveCamera(3);
+            Display(1);
+         END;
+         IF ISKEYDOWN(43) THEN
+            MoveCamera(4);
+            Display(1);
+         END;
+      END;
+      CASE
+         IF ISKEYDOWN(2) THEN
+            pointerPoint(2):=pointerPoint(2)-velocity;
+            ShowPointer();
+            IF toolN==1 THEN
+               tempPoint(4):=0;
+            END;
+         END;
+         IF ISKEYDOWN(12) THEN
+            pointerPoint(2):=pointerPoint(2)+velocity;
+            ShowPointer();
+            IF toolN==1 THEN
+               tempPoint(4):=0;
+            END;
+         END;
+      END;
+      CASE
+         IF ISKEYDOWN(8) THEN
+            pointerPoint(1):=pointerPoint(1)+velocity;
+            ShowPointer();
+            IF toolN==1 THEN
+               tempPoint(4):=0;
+            END;
+         END;
+         IF ISKEYDOWN(7) THEN
+            pointerPoint(1):=pointerPoint(1)-velocity;
+            ShowPointer();
+            IF toolN==1 THEN
+               tempPoint(4):=0;
+            END;
+         END;
+      END;
+      IF toolN==1 THEN
+         IF tempPoint(4)==1 THEN
+            IF ISKEYDOWN(30) AND tempLocation(1)≠-1 THEN
+               UseTools();
+               tempPoint(3):=1;
+            ELSE
+               tempPoint(3):=0;
+            END;
+         ELSE
+            IF ISKEYDOWN(30) THEN
+               UseTools();
+               tempPoint(3):=1;
+            ELSE
+               tempPoint(3):=0;
+            END;
+         END;
+      END;
+      WAIT(.02);
+   END;
+END;
+
+VIEW "Gallery" Gallery() BEGIN
+   fileList:=GetPhotoList(AFiles());
+   tempV:=[0,0,0,0];
+   LOCAL fileN:=0;
+   LOCAL mode:=0;
+   LOCAL fn:=1;
+   LOCAL ticks:=128;
+   LOCAL keyCode;
+   DIMGROB_P(G1,320,240,RGB(0,0,0));
+   DIMGROB_P(G2,320,240,RGB(0,0,0));
+   WHILE 1 DO
+      IFERR fileList(fileN+1) THEN
+         BREAK;
+      END;
+      fileN:=fileN+1;
+   END;
+   IF fileN==0 THEN
+      RECT_P(G0,0,0,320,240,RGB(0,0,0));
+      FREEZE;
+   ELSE
+      WHILE 1 DO
+         keyCode:=GETKEY();
+         CASE
+            IF keyCode==41 THEN
+               tempV(1):=1;
+               IF mode==1 THEN
+                  mode:=0;
+               ELSE
+                  mode:=1;
+               END;
+            END;
+            IF keyCode==30 THEN
+               ticks:=128;
+            END;
+         END;
+         IF ticks==128 THEN
+            ticks:=0;
+            IF mode==0 THEN
+               fn:=(fn MOD fileN)+1;
+            ELSE
+               fn:=RANDINT(1,fileN);
+            END;
+            G3:=AFiles(fileList(fn));
+            RECT_P(G2,0,0,320,240,RGB(0,0,0));
+            IF GROBW_P(G3)>GROBH_P(G3) THEN
+               BLIT_P(G2,0,(240-320/GROBW_P(G3)*GROBH_P(G3))/2,320,(240+320/GROBW_P(G3)*GROBH_P(G3))/2,G3);
+            ELSE
+               BLIT_P(G2,(320-240/GROBH_P(G3)*GROBW_P(G3))/2,0,(320+240/GROBH_P(G3)*GROBW_P(G3))/2,240,G3);
+            END;
+         END;
+         IF ticks<64 THEN
+            RECT_P(G1,0,0,320,240,RGB(0,0,0));
+            BLIT_P(G1,0,0,GROBW_P(G1),GROBH_P(G1),G2,0,0,GROBW_P(G2)+1,GROBH_P(G2)+1,RGB(0,0,0,255),IP(ticks*255/64));
+         ELSE
+            RECT_P(G1,0,0,320,240,RGB(0,0,0));
+            BLIT_P(G1,0,0,GROBW_P(G1),GROBH_P(G1),G2,0,0,GROBW_P(G2)+1,GROBH_P(G2)+1,RGB(0,0,0,255),IP((128-ticks)*255/64));
+         END;
+         IF tempV(1)>0 THEN
+            IF mode==1 THEN
+               TEXTOUT_P(">RandomMode<",G1,10,30-tempV(1)*3,3,RGB(255,255,255));
+            ELSE
+               TEXTOUT_P(">OrderMode<",G1,10,30-tempV(1)*3,3,RGB(255,255,255));
+            END;
+            tempV(1):=tempV(1)+1;
+            IF tempV(1)==16 THEN
+               tempV(1):=0;
+            END;
+         END;
+         BLIT_P(G0,G1);
+         ticks:=ticks+1;
+         WAIT(.01);
+      END;
+   END;
+END;
+
+Plot() BEGIN
+   Paint();
+END;
+
+Num() BEGIN
+   Gallery();
+END;
